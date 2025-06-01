@@ -84,7 +84,7 @@ if submit:
     }
 
     try:
-        response = requests.post("https://diabetes-backend.azurewebsites.net/", json=input_data)
+        response = requests.post("https://diabetes-backend.azurewebsites.net/predict", json=input_data)
         if response.status_code == 200:
             result = response.json()
             st.success(f"Prediction: {result['status']}")
