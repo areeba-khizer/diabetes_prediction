@@ -9,6 +9,11 @@ This project is a full-stack machine learning web application that predicts diab
 
 ---
 
+## Dataset
+- https://www.kaggle.com/datasets/iammustafatz/diabetes-prediction-dataset
+
+---
+
 ## Features
 
 - Train & track a **Random Forest Classifier** using MLflow
