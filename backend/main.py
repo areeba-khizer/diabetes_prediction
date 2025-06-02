@@ -7,12 +7,9 @@ import os
 
 app = FastAPI()
 
-# CORS settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://diabetes-frontend.azurewebsites.net",  # Your deployed frontend URL
-    ],
+    allow_origins=["*"],  # For production, restrict this
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -58,28 +55,88 @@ def interpret_diabetes_classification(prediction: int):
     else:
         return "Diabetes", "The model predicts the presence of diabetes. Please consult a doctor."
 
-# Load model at startup
+# Enhanced model loading with debugging
 model = None
-model_path = "models/random_forest_classifier"  # Relative path (must be deployed with app)
 
-try:
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Model path not found: {model_path}")
-    model = mlflow.sklearn.load_model(model_path)
-    print("✅ Model loaded successfully.")
-except Exception as e:
-    print(f"❌ Failed to load model: {e}")
+def load_model():
+    global model
+    
+    # Debug information
+    print("=== MODEL LOADING DEBUG INFO ===")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Script location: {os.path.abspath(__file__)}")
+    
+    # Try multiple possible paths
+    possible_paths = [
+        "models/random_forest_classifier",
+        "./models/random_forest_classifier",
+        os.path.join(os.path.dirname(__file__), "models", "random_forest_classifier"),
+        os.path.join(os.getcwd(), "models", "random_forest_classifier")
+    ]
+    
+    print("Checking possible model paths:")
+    for path in possible_paths:
+        abs_path = os.path.abspath(path)
+        exists = os.path.exists(path)
+        print(f"  {path} -> {abs_path} (exists: {exists})")
+        
+        if exists:
+            try:
+                print(f"Attempting to load model from: {path}")
+                model = mlflow.sklearn.load_model(path)
+                print("✅ Model loaded successfully!")
+                return True
+            except Exception as e:
+                print(f"❌ Failed to load model from {path}: {e}")
+                continue
+    
+    # List directory contents for debugging
+    print("\nDirectory contents:")
+    try:
+        print(f"Current directory contents: {os.listdir('.')}")
+        if os.path.exists("models"):
+            print(f"Models directory contents: {os.listdir('models')}")
+        else:
+            print("Models directory does not exist!")
+    except Exception as e:
+        print(f"Error listing directories: {e}")
+    
+    print("❌ Could not load model from any path")
+    return False
+
+# Load model at startup
+load_model()
+
+# Health check endpoint
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "model_loaded": model is not None,
+        "working_directory": os.getcwd()
+    }
 
 # API endpoint
 @app.post("/predict")
 def predict(data: InputData):
     if model is None:
-        raise HTTPException(status_code=500, detail="Model is not loaded.")
-    df = preprocess_input(data)
-    prediction = model.predict(df)[0]
-    status, explanation = interpret_diabetes_classification(prediction)
-    return {
-        "prediction": int(prediction),
-        "status": status,
-        "explanation": explanation
-    }
+        raise HTTPException(
+            status_code=500, 
+            detail="Model is not loaded. Please check the model path and ensure the model file exists."
+        )
+    
+    try:
+        df = preprocess_input(data)
+        prediction = model.predict(df)[0]
+        status, explanation = interpret_diabetes_classification(prediction)
+        return {
+            "prediction": int(prediction),
+            "status": status,
+            "explanation": explanation
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
